@@ -99,25 +99,98 @@ if st.session_state["poligono_geojson"]:
     
     # 2. BOTÓN DE AUDITORÍA COPERNICUS
     if st.button("🔍 Ejecutar Auditoría Satelital Copernicus"):
-        # Convertimos el GeoJSON a WKT para que Copernicus lo entienda
-        geometria = shape(st.session_state["poligono_geojson"]["geometry"])
-        wkt_area = geometria.wkt
         
-        st.write(f"**Geometría a auditar:** `{wkt_area[:100]}...`")
+        # --- EL PUENTE MÁGICO: De GeoJSON a WKT ---
+        geometria = shape(st.session_state["poligono_geojson"]["geometry"])
+        wkt_area = geometria.wkt 
+        
+        st.write(f"**Geometría enviada a Europa:** `{wkt_area[:80]}...`")
         
         if modo_demo:
             st.success("✅ Conexión M2M simulada exitosa. Generando expediente...")
             try:
-                st.image("NDVI_Prueba_Oficial.png", caption="Auditoría Satelital AgroEscudo 360°", use_column_width=True)
-                st.info("💡 Token de Legalidad emitido y adjuntado al expediente.")
+                st.image("NDVI_Prueba_Oficial.png", caption="Auditoría Satelital AgroEscudo 360° - Línea Base 2020", use_column_width=True)
+                st.info("💡 Token de Legalidad emitido y adjuntado al expediente DDS.")
             except:
-                st.error("Error cargando la imagen demo. Sube 'NDVI_Prueba_Oficial.png' a GitHub.")
+                st.error("Error cargando la imagen demo. Asegúrate de que 'NDVI_Prueba_Oficial.png' está en GitHub.")
         else:
             if not USUARIO or not CONTRASENA:
                 st.error("⚠️ Ingresa credenciales reales de Copernicus arriba a la izquierda.")
             else:
-                with st.spinner("Conectando con la constelación Sentinel-2..."):
-                    st.warning("⚠️ Iniciando petición OData real con el polígono dibujado.")
-                    # Aquí va la lógica real de descarga (requests.get...) que ya probaron.
+                with st.spinner("📡 Buscando en los archivos de la Agencia Espacial Europea (Dic 2020)..."):
+                    try:
+                        # 1. BÚSQUEDA EN COPERNICUS (Usando el polígono dibujado)
+                        url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
+                        query = f"?$filter=Collection/Name eq 'SENTINEL-2' and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq 'S2MSI2A') and ContentDate/Start gt 2020-11-01T00:00:00.000Z and ContentDate/Start lt 2021-01-31T23:59:59.000Z and OData.CSC.Intersects(area=geography'SRID=4326;{wkt_area}') and Attributes/OData.CSC.DoubleAttribute/any(att:att/Name eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value lt 80.0)"
+                        
+                        response = requests.get(url + query)
+                        response.raise_for_status()
+                        resultados = response.json().get('value', [])
+                        
+                        if not resultados:
+                            st.warning("No se encontraron imágenes sin nubes para esa zona exacta en la línea base (Dic 2020).")
+                            st.stop()
+                        
+                        mejor_imagen = resultados[0]
+                        imagen_id = mejor_imagen['Id']
+                        st.success(f"✅ Satélite encontrado. ID: {imagen_id}. Solicitando pista de descarga...")
+                        
+                        # 2. AUTENTICACIÓN Y DESCARGA
+                        token_url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+                        token_data = {"client_id": "cdse-public", "grant_type": "password", "username": USUARIO, "password": CONTRASENA}
+                        
+                        token_response = requests.post(token_url, data=token_data)
+                        token_response.raise_for_status()
+                        token = token_response.json().get("access_token")
+                        
+                        st.info("⬇️ Descargando bandas espectrales (~1GB). No cierres la pestaña...")
+                        download_url = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products({imagen_id})/$value"
+                        ruta_zip = "temp_sat.zip"
+                        
+                        respuesta_descarga = requests.get(download_url, headers={"Authorization": f"Bearer {token}"}, allow_redirects=False)
+                        while respuesta_descarga.is_redirect:
+                            url_redireccion = respuesta_descarga.headers['Location']
+                            respuesta_descarga = requests.get(url_redireccion, headers={"Authorization": f"Bearer {token}"}, allow_redirects=False, stream=True)
+                        
+                        with open(ruta_zip, 'wb') as f:
+                            for chunk in respuesta_descarga.iter_content(chunk_size=8192):
+                                if chunk: f.write(chunk)
+                        
+                        # 3. PROCESAMIENTO NDVI
+                        st.info("🧮 Ejecutando Motor Analítico (Calculando NDVI)...")
+                        directorio_extraccion = "temp_extract"
+                        os.makedirs(directorio_extraccion, exist_ok=True)
+                        with zipfile.ZipFile(ruta_zip, 'r') as zip_ref:
+                            zip_ref.extractall(directorio_extraccion)
+                        
+                        archivos_jp2 = glob.glob(f"{directorio_extraccion}/**/*.jp2", recursive=True)
+                        ruta_b04 = next((f for f in archivos_jp2 if "B04_10m" in f), None)
+                        ruta_b08 = next((f for f in archivos_jp2 if "B08_10m" in f), None)
+                        
+                        if ruta_b04 and ruta_b08:
+                            escala = 0.20 # Reducimos escala para no colapsar la RAM del servidor
+                            with rasterio.open(ruta_b04) as src_red:
+                                red = src_red.read(1, out_shape=(int(src_red.height * escala), int(src_red.width * escala)), resampling=Resampling.bilinear).astype('float32')
+                            with rasterio.open(ruta_b08) as src_nir:
+                                nir = src_nir.read(1, out_shape=(int(src_red.height * escala), int(src_red.width * escala)), resampling=Resampling.bilinear).astype('float32')
+                            
+                            np.seterr(divide='ignore', invalid='ignore')
+                            ndvi = np.where((nir + red) == 0., 0, (nir - red) / (nir + red))
+                            
+                            st.success("🎉 ¡Auditoría Completada Exitosamente!")
+                            fig, ax = plt.subplots(figsize=(10, 8))
+                            cax = ax.imshow(ndvi, cmap='RdYlGn', vmin=-0.2, vmax=0.9)
+                            fig.colorbar(cax, label='Índice NDVI', shrink=0.8)
+                            ax.set_title("Auditoría Satelital AgroEscudo 360° - Línea Base 2020", fontsize=14)
+                            ax.axis('off')
+                            
+                            st.pyplot(fig) 
+                            
+                        else:
+                            st.error("No se encontraron las bandas a 10m en el archivo descargado.")
+
+                    except Exception as e:
+                        st.error(f"❌ Error en la conexión M2M: {e}")
+
 else:
     st.info("👆 Por favor, dibuja un polígono en el mapa o ingresa coordenadas para habilitar la auditoría.")
