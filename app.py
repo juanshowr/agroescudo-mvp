@@ -44,7 +44,7 @@ if st.sidebar.button("🔍 Ejecutar Auditoría Satelital"):
         st.success("✅ Conexión simulada exitosa. Cargando expediente DDS de la base de datos...")
         # Carga la imagen local que vamos a subir a GitHub
         try:
-            st.image("NDVI_Prueba_Oficial.jpg", caption="Auditoría Satelital AgroEscudo 360° - Departamento del Magdalena", use_column_width=True)
+            st.image("NDVI_Prueba_Oficial.png", caption="Auditoría Satelital AgroEscudo 360° - Departamento del Magdalena", use_column_width=True)
             st.info("💡 Token de Legalidad emitido y adjuntado al expediente.")
         except Exception as e:
             st.error("Error al cargar la imagen del Demo. Asegúrate de haberla subido a GitHub.")
