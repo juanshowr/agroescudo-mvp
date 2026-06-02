@@ -4,3 +4,5 @@ shapely
 rasterio
 numpy
 matplotlib
+folium
+streamlit-folium
