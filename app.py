@@ -177,40 +177,60 @@ elif pagina == "🌍 2. Portal Compradores (B2B Marketplace)":
     st.title("🌍 AgroEscudo Hub: European Buyers Portal")
     st.markdown("Directorio exclusivo de proveedores agrícolas colombianos **100% verificados (EUDR)**.")
     
+    # Base de datos simulada con todos los detalles comerciales
     datos_proveedores = [
         {"ID": "EU-DDS-845129", "Nombre": "Asoc. Cafetera del Sur", "Depto": "Huila", "Producto": "Café", "Volumen (Ton)": 150, "Certificación": "Fairtrade", "Exportación": "Japón, EE.UU."},
-        {"ID": "EU-DDS-918273", "Nombre": "Cacaoteros Sierra Nevada", "Depto": "Magdalena", "Producto": "Cacao", "Volumen (Ton)": 80, "Certificación": "Orgánico", "Exportación": "Alemania, Suiza"}
+        {"ID": "EU-DDS-918273", "Nombre": "Cacaoteros Sierra Nevada", "Depto": "Magdalena", "Producto": "Cacao", "Volumen (Ton)": 80, "Certificación": "Orgánico", "Exportación": "Alemania, Suiza"},
+        {"ID": "EU-DDS-112233", "Nombre": "Palmeras del Magdalena Medio", "Depto": "Santander", "Producto": "Palma de Aceite", "Volumen (Ton)": 500, "Certificación": "RSPO", "Exportación": "Holanda"},
+        {"ID": "EU-DDS-445566", "Nombre": "Café Altura Premium", "Depto": "Antioquia", "Producto": "Café", "Volumen (Ton)": 200, "Certificación": "Rainforest Alliance", "Exportación": "Corea del Sur"},
+        {"ID": "EU-DDS-778899", "Nombre": "Cacao Nativo Ancestral", "Depto": "Huila", "Producto": "Cacao", "Volumen (Ton)": 50, "Certificación": "Ninguna", "Exportación": "Primera Exportación"}
     ]
     
+    # Si el usuario agregó su finca en la pestaña 1, la mostramos aquí con sus datos
     if st.session_state.get("mi_finca_b2b"):
         datos_proveedores.insert(0, {
-            "ID": "EU-DDS-NUEVO", "Nombre": "🟢 TU FINCA", "Depto": "Magdalena", "Producto": "Café / Cacao", "Volumen (Ton)": 12.5, "Certificación": "En Proceso", "Exportación": "Lista para Europa"
+            "ID": "EU-DDS-NUEVO", "Nombre": "🟢 TU FINCA (Recién Auditada)", "Depto": "Magdalena", "Producto": "Café / Cacao", "Volumen (Ton)": 12.5, "Certificación": "En Proceso", "Exportación": "Lista para Europa"
         })
 
     df = pd.DataFrame(datos_proveedores)
 
-    st.markdown("### 🔍 Filtrar Proveedores")
-    f1, f2, f3 = st.columns(3)
+    # Filtros
+    st.markdown("### 🔍 Filtrar Proveedores Seguros")
+    f1, f2, f3, f4 = st.columns(4)
     with f1:
         filtro_prod = st.selectbox("Producto", ["Todos", "Café", "Cacao", "Palma de Aceite"])
     with f2:
-        filtro_cert = st.selectbox("Certificación", ["Todas", "Fairtrade", "Orgánico", "En Proceso"])
+        filtro_depto = st.selectbox("Región", ["Todas"] + list(df["Depto"].unique()))
     with f3:
+        filtro_cert = st.selectbox("Certificación", ["Todas"] + list(df["Certificación"].unique()))
+    with f4:
         vol_min = st.number_input("Vol. Mínimo (Ton)", value=0.0)
 
+    # Aplicar Filtros
     if filtro_prod != "Todos": df = df[df["Producto"] == filtro_prod]
+    if filtro_depto != "Todas": df = df[df["Depto"] == filtro_depto]
     if filtro_cert != "Todas": df = df[df["Certificación"] == filtro_cert]
     df = df[df["Volumen (Ton)"] >= vol_min]
 
+    # Métricas
+    col_m1, col_m2 = st.columns(2)
+    col_m1.metric("📦 Volumen Total Disponible (Ton)", df["Volumen (Ton)"].sum())
+    col_m2.metric("✅ Fincas 100% Libres de Deforestación", len(df))
+
+    # Mostrar Resultados en Tarjetas Visuales con todos los detalles
     st.markdown("---")
     for index, row in df.iterrows():
         with st.container():
             col1, col2, col3 = st.columns([1, 3, 1])
             with col1:
-                st.image("https://cdn-icons-png.flaticon.com/512/190/190411.png", width=60) 
+                st.image("https://cdn-icons-png.flaticon.com/512/190/190411.png", width=80) 
+                st.caption(f"ID: {row['ID']}")
             with col2:
                 st.subheader(row["Nombre"])
-                st.markdown(f"**📍 {row['Depto']} | 🌱 {row['Producto']} | 📦 {row['Volumen (Ton)']} Toneladas**")
+                st.markdown(f"**📍 Región:** {row['Depto']} | **🌱 Producto:** {row['Producto']} | **📦 Capacidad:** {row['Volumen (Ton)']} Toneladas")
+                # ¡Aquí están de vuelta las certificaciones y el historial de exportación!
+                st.markdown(f"**🏅 Certificaciones:** `{row['Certificación']}` | **🚢 Exp. Previa:** `{row['Exportación']}`")
             with col3:
-                st.button("📄 Expediente", key=f"btn_{index}")
+                st.button("📄 Expediente EUDR", key=f"btn_{index}")
+                st.button("✉️ Contactar Productor", key=f"contacto_{index}", type="primary")
             st.markdown("---")
