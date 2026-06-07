@@ -1,146 +1,167 @@
 import streamlit as st
-import requests
-import os
 import json
 import time
 import random
-import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 from shapely.geometry import shape, box
 import folium
 from folium.plugins import Draw, LocateControl
 from streamlit_folium import st_folium
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="AgroEscudo 360° - Plataforma", page_icon="🛰️", layout="wide")
 
-st.title("🛰️ AgroEscudo 360° - Plataforma de Auditoría EUDR")
-st.markdown("Georreferenciación en campo, conexión M2M con Copernicus y enlace aduanero.")
-
-# --- INICIALIZAR VARIABLES DE SESIÓN ---
+# --- VARIABLES DE SESIÓN ---
 if "poligono_geojson" not in st.session_state:
     st.session_state["poligono_geojson"] = None
 if "auditoria_superada" not in st.session_state:
     st.session_state["auditoria_superada"] = False
+if "mi_finca_b2b" not in st.session_state:
+    st.session_state["mi_finca_b2b"] = False
 
-# --- BARRA LATERAL (CONFIGURACIÓN) ---
-st.sidebar.header("⚙️ Configuración M2M")
-USUARIO = st.sidebar.text_input("Usuario Copernicus", type="password")
-CONTRASENA = st.sidebar.text_input("Contraseña Copernicus", type="password")
+# --- NAVEGACIÓN LATERAL ---
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Flag_of_Europe.svg/2560px-Flag_of_Europe.svg.png", width=50)
+st.sidebar.title("AgroEscudo 360°")
 st.sidebar.markdown("---")
-modo_demo = st.sidebar.checkbox("🚀 Usar Modo Demo Rápido", value=True)
+pagina = st.sidebar.radio("Navegación del Sistema", [
+    "🛡️ 1. Portal Productor (Auditoría EUDR)", 
+    "🌍 2. Portal Compradores (B2B Marketplace)"
+])
 
-# --- PANEL CENTRAL: PESTAÑAS DE ENTRADA DE DATOS ---
-st.subheader("1. Captura de Datos del Predio")
-tab1, tab2 = st.tabs(["🗺️ Dibujar en Mapa / GPS", "✍️ Ingreso Manual"])
+st.sidebar.markdown("---")
+modo_demo = st.sidebar.checkbox("🚀 Usar Modo Demo (Pitch)", value=True)
 
-with tab1:
-    st.markdown("Usa las herramientas de la izquierda del mapa para dibujar un polígono. Si estás en campo, usa el botón de **Ubicación (GPS)**.")
+# ==========================================
+# PÁGINA 1: PORTAL DEL PRODUCTOR / EXPORTADOR
+# ==========================================
+if pagina == "🛡️ 1. Portal Productor (Auditoría EUDR)":
+    st.title("🛡️ Portal de Cumplimiento EUDR")
+    st.markdown("Georreferenciación en campo, conexión M2M con Copernicus y enlace aduanero TRACES NT.")
+
+    st.subheader("1. Captura de Datos del Predio")
+    st.markdown("Usa las herramientas para dibujar el lote. En campo, usa el botón de **Ubicación (GPS)**.")
     
+    # Mapa de Captura
     m = folium.Map(location=[4.5709, -74.2973], zoom_start=5)
     LocateControl(auto_start=False).add_to(m)
-    draw_options = {'polyline': False, 'rectangle': True, 'circle': False, 'marker': True, 'circlemarker': False, 'polygon': True}
-    Draw(export=True, draw_options=draw_options).add_to(m)
+    Draw(export=True, draw_options={'polyline': False, 'rectangle': True, 'circle': False, 'marker': True, 'polygon': True}).add_to(m)
     
-    output_mapa = st_folium(m, width=1000, height=500)
+    output_mapa = st_folium(m, width=1000, height=400)
     
     if output_mapa["last_active_drawing"]:
         st.session_state["poligono_geojson"] = output_mapa["last_active_drawing"]
-        st.success("✅ Polígono/Punto capturado desde el mapa.")
+        st.success("✅ Polígono capturado exitosamente.")
 
-with tab2:
-    st.markdown("Ingresa los límites manuales (Bounding Box):")
-    col1, col2 = st.columns(2)
-    with col1:
-        min_lon = st.number_input("Longitud Mínima", value=-74.2000, format="%.4f")
-        min_lat = st.number_input("Latitud Mínima", value=10.4000, format="%.4f")
-    with col2:
-        max_lon = st.number_input("Longitud Máxima", value=-74.0000, format="%.4f")
-        max_lat = st.number_input("Latitud Máxima", value=10.6000, format="%.4f")
+    # Auditoría
+    if st.session_state["poligono_geojson"]:
+        st.markdown("---")
+        st.subheader("2. Auditoría Satelital Copernicus")
         
-    if st.button("Guardar Coordenadas Manuales"):
-        bbox_poligono = box(min_lon, min_lat, max_lon, max_lat)
-        st.session_state["poligono_geojson"] = {
-            "type": "Feature",
-            "geometry": json.loads(json.dumps(bbox_poligono.__geo_interface__))
-        }
-        st.success("✅ Coordenadas manuales guardadas.")
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            st.download_button("📥 Descargar Polígono (GeoJSON)", json.dumps(st.session_state["poligono_geojson"]), "finca.geojson", "application/json", type="primary")
+        
+        with col_btn2:
+            if st.button("🔍 Ejecutar Auditoría Satelital"):
+                if modo_demo:
+                    st.success("✅ Conexión M2M exitosa con Sentinel-2.")
+                    try:
+                        st.image("NDVI_Prueba_Oficial.png", caption="Análisis NDVI - Línea Base 2020", use_column_width=True)
+                        st.info("💡 Token de Legalidad emitido. Finca libre de deforestación en 2020.")
+                        st.session_state["auditoria_superada"] = True
+                    except:
+                        st.error("Sube la imagen NDVI_Prueba_Oficial.png a GitHub.")
+                else:
+                    st.warning("⚠️ Iniciando petición OData real (Desactivado por RAM).")
 
-# --- SECCIÓN DE AUDITORÍA Y DESCARGA ---
-st.markdown("---")
-st.subheader("2. Auditoría EUDR (Copernicus)")
+    # Aduanas y B2B
+    if st.session_state.get("auditoria_superada"):
+        st.markdown("---")
+        st.subheader("3. Declaración Aduanera (DDS)")
+        
+        if st.button("📤 Enviar Expediente a la Unión Europea"):
+            with st.spinner("Estableciendo conexión segura con TRACES NT..."):
+                time.sleep(1.5)
+            
+            numero_dds = f"EU-DDS-2026-CO-{random.randint(100000, 999999)}"
+            url_qr = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={numero_dds}"
+            
+            st.success("✅ Declaración Aceptada. Listo para embarque.")
+            col_qr1, col_qr2 = st.columns([3, 1])
+            with col_qr1:
+                st.write(f"**Referencia DDS:** `{numero_dds}`")
+                st.markdown("Imprima el QR y adhiéralo al contenedor.")
+                
+                # EL GANCHO PARA EL B2B
+                st.markdown("### 🌍 ¿Desea conseguir nuevos clientes en Europa?")
+                if st.button("✅ Incluir mi Finca en el Catálogo B2B de AgroEscudo"):
+                    st.session_state["mi_finca_b2b"] = True
+                    st.balloons()
+                    st.success("¡Perfil comercial activado! Los compradores europeos ahora pueden ver su finca verificada.")
+            with col_qr2:
+                st.image(url_qr)
 
-if st.session_state["poligono_geojson"]:
-    geometria = shape(st.session_state["poligono_geojson"]["geometry"])
-    wkt_area = geometria.wkt 
-    
-    col_btn1, col_btn2 = st.columns(2)
-    
-    with col_btn1:
-        geojson_str = json.dumps(st.session_state["poligono_geojson"], indent=2)
-        st.download_button(label="📥 Descargar Polígono (GeoJSON)", data=geojson_str, file_name="finca_auditada.geojson", mime="application/json", type="primary")
-    
-    with col_btn2:
-        if st.button("🔍 Ejecutar Auditoría Satelital"):
-            st.write(f"**Geometría WKT enviada:** `{wkt_area[:60]}...`")
-            if modo_demo:
-                st.success("✅ Conexión M2M exitosa.")
-                try:
-                    st.image("NDVI_Prueba_Oficial.png", caption="Auditoría Satelital AgroEscudo 360°", use_column_width=True)
-                    st.info("💡 Token de Legalidad emitido. Finca libre de deforestación en 2020.")
-                    st.session_state["auditoria_superada"] = True
-                except:
-                    st.error("Error cargando la imagen demo.")
-            else:
-                st.warning("⚠️ Iniciando petición OData real. (Requiere despliegue local por RAM).")
-                # Aquí iría el código real de requests.get
 
-# --- SECCIÓN DE ADUANAS (NUEVO) ---
-if st.session_state.get("auditoria_superada"):
+# ==========================================
+# PÁGINA 2: PORTAL DE COMPRADORES (B2B)
+# ==========================================
+elif pagina == "🌍 2. Portal Compradores (B2B Marketplace)":
+    st.title("🌍 AgroEscudo Hub: European Buyers Portal")
+    st.markdown("Directorio exclusivo de proveedores agrícolas colombianos **100% verificados bajo la normativa EUDR**.")
+    
+    # Base de datos simulada
+    datos_proveedores = [
+        {"ID": "EU-DDS-845129", "Nombre": "Asoc. Cafetera del Sur", "Depto": "Huila", "Producto": "Café", "Volumen (Ton)": 150, "Certificación": "Fairtrade", "Exportación": "Japón, EE.UU."},
+        {"ID": "EU-DDS-918273", "Nombre": "Cacaoteros Sierra Nevada", "Depto": "Magdalena", "Producto": "Cacao", "Volumen (Ton)": 80, "Certificación": "Orgánico", "Exportación": "Alemania, Suiza"},
+        {"ID": "EU-DDS-112233", "Nombre": "Palmeras del Magdalena Medio", "Depto": "Santander", "Producto": "Palma de Aceite", "Volumen (Ton)": 500, "Certificación": "RSPO", "Exportación": "Holanda"},
+        {"ID": "EU-DDS-445566", "Nombre": "Café Altura Premium", "Depto": "Antioquia", "Producto": "Café", "Volumen (Ton)": 200, "Certificación": "Rainforest Alliance", "Exportación": "Corea del Sur"},
+        {"ID": "EU-DDS-778899", "Nombre": "Cacao Nativo Ancestral", "Depto": "Huila", "Producto": "Cacao", "Volumen (Ton)": 50, "Certificación": "Ninguna", "Exportación": "Primera Exportación"}
+    ]
+    
+    # Si el usuario agregó su finca en la pestaña 1, la mostramos aquí
+    if st.session_state.get("mi_finca_b2b"):
+        datos_proveedores.insert(0, {
+            "ID": "EU-DDS-NUEVO", "Nombre": "🟢 TU FINCA (Recién Auditada)", "Depto": "Magdalena", "Producto": "Café / Cacao", "Volumen (Ton)": 120, "Certificación": "En Proceso", "Exportación": "Lista para Europa"
+        })
+
+    df = pd.DataFrame(datos_proveedores)
+
+    # Filtros
+    st.markdown("### 🔍 Filtrar Proveedores Seguros")
+    f1, f2, f3, f4 = st.columns(4)
+    with f1:
+        filtro_prod = st.selectbox("Producto", ["Todos", "Café", "Cacao", "Palma de Aceite"])
+    with f2:
+        filtro_depto = st.selectbox("Región", ["Todas"] + list(df["Depto"].unique()))
+    with f3:
+        filtro_cert = st.selectbox("Certificación", ["Todas"] + list(df["Certificación"].unique()))
+    with f4:
+        vol_min = st.number_input("Vol. Mínimo (Ton)", value=0)
+
+    # Aplicar Filtros
+    if filtro_prod != "Todos": df = df[df["Producto"] == filtro_prod]
+    if filtro_depto != "Todas": df = df[df["Depto"] == filtro_depto]
+    if filtro_cert != "Todas": df = df[df["Certificación"] == filtro_cert]
+    df = df[df["Volumen (Ton)"] >= vol_min]
+
+    # Métricas
+    col_m1, col_m2 = st.columns(2)
+    col_m1.metric("📦 Volumen Total Disponible (Ton)", df["Volumen (Ton)"].sum())
+    col_m2.metric("✅ Fincas 100% Libres de Deforestación", len(df))
+
+    # Mostrar Resultados en Tarjetas Visuales
     st.markdown("---")
-    st.subheader("3. Sistema de Información UE (TRACES NT)")
-    st.markdown("Generación del Payload JSON para declaración aduanera automatizada.")
-    
-    # Construimos el Payload simulado
-    payload = {
-        "dds_type": "submission",
-        "operator_id": "CO-EXP-AGRO360",
-        "commodity": "COFFEE / PALM / CACAO",
-        "country_of_production": "CO",
-        "plots": [
-            {
-                "plot_id": f"FINCA_{random.randint(1000, 9999)}",
-                "geolocation": st.session_state["poligono_geojson"]["geometry"],
-                "deforestation_free_verification": True,
-                "verification_method": "Copernicus Sentinel-2 M2M API (AgroEscudo 360)",
-                "baseline_date": "2020-12-31"
-            }
-        ]
-    }
-    
-    with st.expander("👀 Ver Payload JSON a enviar a Europa"):
-        st.json(payload)
-        
-    if st.button("📤 Enviar Expediente DDS a la Unión Europea"):
-        with st.spinner("Empaquetando datos y encriptando payload..."):
-            time.sleep(1.5)
-        with st.spinner("Estableciendo conexión segura con servidores de aduana UE (TRACES NT)..."):
-            time.sleep(2)
-        
-        # Generar número de referencia y QR
-        numero_dds = f"EU-DDS-2026-CO-{random.randint(100000, 999999)}"
-        url_qr = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={numero_dds}"
-        
-        st.success("✅ ¡Declaración de Diligencia Debida (DDS) Aceptada por la Unión Europea!")
-        
-        col_res1, col_res2 = st.columns([2, 1])
-        with col_res1:
-            st.info(f"**Número de Referencia Oficial:**\n### {numero_dds}")
-            st.markdown("""
-            **Siguientes pasos:**
-            1. Imprima este código QR.
-            2. Adhiéralo a la guía de embarque (Bill of Lading) o al contenedor.
-            3. Las autoridades aduaneras en el puerto de destino en Europa escanearán este código para liberar la mercancía.
-            """)
-        with col_res2:
-            st.image(url_qr, caption="QR Aduanero EUDR")
+    for index, row in df.iterrows():
+        with st.container():
+            col1, col2, col3 = st.columns([1, 3, 1])
+            with col1:
+                st.image("https://cdn-icons-png.flaticon.com/512/190/190411.png", width=80) # Icono Check Verde
+                st.caption(f"ID: {row['ID']}")
+            with col2:
+                st.subheader(row["Nombre"])
+                st.markdown(f"**📍 Región:** {row['Depto']} | **🌱 Producto:** {row['Producto']} | **📦 Capacidad:** {row['Volumen (Ton)']} Toneladas")
+                st.markdown(f"**🏅 Certificaciones:** `{row['Certificación']}` | **🚢 Exp. Previa:** `{row['Exportación']}`")
+            with col3:
+                st.button("📄 Ver Expediente EUDR", key=f"btn_{index}")
+                st.button("✉️ Contactar Productor", key=f"contacto_{index}", type="primary")
+            st.markdown("---")
